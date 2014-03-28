@@ -14,6 +14,7 @@ import (
 type Host struct {
 	IP              net.IP  `json:"ip"`
 	Name            string  `json:"hostname"`
+	Hop             int     `json:"hop-number"`
 	PacketMicrosecs []int   `json:"packet-times"`
 	Sent            int     `json:"sent"`
 	Received        int     `json:"received"`
@@ -24,7 +25,6 @@ type Host struct {
 	Best               int     `json:"best"`
 	Worst              int     `json:"worst"`
 	StandardDev        float64 `json:"standard-dev"`
-	GeometricMean      float64 `json:"geometric-mean"`
 	MeanJitter         float64 `json:"mean-jitter"`
 	WorstJitter        int     `json:"worst-jitter"`
 	InterarrivalJitter int     `json:"interarrival-jitter"` // calculated with rfc3550 A.8 shortcut
@@ -44,7 +44,7 @@ type MTR struct {
 // looking at the output. Other than that, the fields and json tags document what everything
 // means.
 func New(reportCycles int, host string, args ...string) *MTR {
-	m := &MTR{Done: make(chan struct{})}
+	m := &MTR{Done: make(chan struct{}), PacketsSent: reportCycles}
 	args = append([]string{"--raw", "-c", strconv.Itoa(reportCycles), host}, args...)
 	go func() {
 		defer close(m.Done)
@@ -92,9 +92,8 @@ func (m *MTR) processOutput() {
 
 		switch line[0] {
 		case 'h':
-			for len(m.Hosts) < hostnum+1 {
-				m.PacketsSent++
-				m.Hosts = append(m.Hosts, &Host{})
+			if len(m.Hosts) < hostnum+1 {
+				m.Hosts = append(m.Hosts, &Host{Hop: hostnum})
 			}
 			m.Hosts[hostnum].IP = net.ParseIP(string(line[finalFieldIdx:]))
 		case 'd':
@@ -118,10 +117,12 @@ func (m *MTR) processHosts() {
 		worst := 0
 		jitters := make([]int, host.Received)
 		worstJitter := 0
-		geoMult := float64(1)
 		for i, packet := range host.PacketMicrosecs {
 			if i > 0 {
 				newJitter := packet - host.PacketMicrosecs[i-1]
+				if newJitter < 0 {
+					newJitter = -newJitter
+				}
 				if newJitter > worstJitter {
 					worstJitter = newJitter
 				}
@@ -135,10 +136,10 @@ func (m *MTR) processHosts() {
 			if packet < best {
 				best = packet
 			}
-			geoMult *= float64(packet)
 		}
 		// mtr keeps a running average, so values may be different than a true average
 		host.Mean = float64(totalPacketTime) / float64(host.Received)
+		host.WorstJitter = worstJitter
 		host.Best = best
 		host.Worst = worst
 		sqrDiff := float64(0)
@@ -150,6 +151,5 @@ func (m *MTR) processHosts() {
 		}
 		host.MeanJitter = float64(jitterSum) / float64(host.Received)
 		host.StandardDev = math.Sqrt(sqrDiff / float64(host.Mean))
-		host.GeometricMean = math.Pow(geoMult, 1/float64(host.Received))
 	}
 }
