@@ -112,6 +112,9 @@ func (m *MTR) processHosts() {
 		host.Received = len(host.PacketMicrosecs)
 		host.Dropped = host.Sent - host.Received
 		host.LostPercent = float64(host.Dropped) / float64(host.Sent)
+		if host.Received == 0 {
+			continue
+		}
 		totalPacketTime := 0
 		best := 1<<31 - 1
 		worst := 0
