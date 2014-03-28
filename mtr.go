@@ -92,8 +92,8 @@ func (m *MTR) processOutput() {
 
 		switch line[0] {
 		case 'h':
-			if len(m.Hosts) < hostnum+1 {
-				m.Hosts = append(m.Hosts, &Host{Hop: hostnum})
+			for len(m.Hosts) < hostnum+1 {
+				m.Hosts = append(m.Hosts, &Host{Hop: len(m.Hosts)})
 			}
 			m.Hosts[hostnum].IP = net.ParseIP(string(line[finalFieldIdx:]))
 		case 'd':
